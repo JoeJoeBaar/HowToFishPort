@@ -3,109 +3,177 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>How To Fish</title>
-
   <style>
-    * {
-      box-sizing: border-box;
-    }
-
     html, body {
       margin: 0;
-      padding: 0;
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background: #111;
+      background: #000;
     }
 
-    #unity-container {
-      width: 100%;
-      height: 100%;
-    }
-
-    #unity-canvas {
+    #game {
       width: 100%;
       height: 100%;
       display: block;
-      background: #111;
     }
 
     #loading {
       position: fixed;
       inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      display: grid;
+      place-items: center;
       color: white;
-      font: 20px Arial, sans-serif;
-      background: #111;
-      z-index: 2;
-    }
-
-    #error {
-      color: #ffb3b3;
+      background: #000;
+      font: 18px Arial, sans-serif;
       text-align: center;
       padding: 20px;
+      z-index: 2;
     }
   </style>
 </head>
-
 <body>
   <div id="loading">Loading How To Fish...</div>
-
-  <div id="unity-container">
-    <canvas id="unity-canvas"></canvas>
-  </div>
+  <canvas id="game" tabindex="-1"></canvas>
 
   <script>
-    const canvas = document.getElementById("unity-canvas");
+    const canvas = document.getElementById("game");
     const loading = document.getElementById("loading");
-
-    // Change these names to match your Build folder.
-    const buildPath = "Build";
-    const buildName = "WebGL";
+    const build = "Build/";
 
     const config = {
-      dataUrl: `${buildPath}/${buildName}.data`,
-      frameworkUrl: `${buildPath}/${buildName}.framework.js`,
-      codeUrl: `${buildPath}/${buildName}.wasm`,
+      dataUrl: build + "WebGL.data",
+      frameworkUrl: build + "WebGL.framework.js",
+      codeUrl: build + "WebGL.wasm",
       streamingAssetsUrl: "StreamingAssets",
-      companyName: "HowToFishPort",
+      companyName: "DefaultCompany",
       productName: "How To Fish",
       productVersion: "1.0"
     };
 
-    const loader = document.createElement("script");
-    loader.src = `${buildPath}/${buildName}.loader.js`;
+    async function fileExists(url) {
+      try {
+        const response = await fetch(url, { method: "HEAD" });
+        if (response.ok) return true;
+        if (response.status === 404) return false;
+      } catch (_) {}
 
-    loader.onload = () => {
-      if (typeof createUnityInstance !== "function") {
-        loading.textContent = "Unity loader was found, but did not initialize.";
-        return;
+      try {
+        const response = await fetch(url, {
+          headers: { Range: "bytes=0-0" }
+        });
+        return response.ok || response.status === 206;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    async function joinParts(url, patterns) {
+      if (await fileExists(url)) return url;
+
+      for (const makePartName of patterns) {
+        const first = makePartName(0);
+
+        if (!(await fileExists(first))) continue;
+
+        const parts = [];
+
+        for (let i = 0; i < 128; i++) {
+          const partUrl = makePartName(i);
+
+          if (!(await fileExists(partUrl))) break;
+
+          loading.textContent =
+            "Loading game files... " + partUrl;
+
+          const response = await fetch(partUrl);
+
+          if (!response.ok) {
+            throw new Error("Failed to load " + partUrl);
+          }
+
+          parts.push(await response.blob());
+        }
+
+        if (parts.length) {
+          return URL.createObjectURL(
+            new Blob(parts, {
+              type: "application/octet-stream"
+            })
+          );
+        }
       }
 
-      createUnityInstance(canvas, config, progress => {
-        loading.textContent =
-          `Loading How To Fish... ${Math.round(progress * 100)}%`;
-      })
-      .then(() => {
+      throw new Error("Missing game file or split parts: " + url);
+    }
+
+    async function startGame() {
+      try {
+        loading.textContent = "Loading Unity...";
+
+        const script = document.createElement("script");
+        script.src = build + "WebGL.loader.js";
+
+        await new Promise((resolve, reject) => {
+          script.onload = resolve;
+          script.onerror = () => reject(
+            new Error("Cannot load Build/WebGL.loader.js. Check that index.html is beside the Build folder.")
+          );
+          document.head.appendChild(script);
+        });
+
+        loading.textContent = "Preparing game files...";
+
+        config.dataUrl = await joinParts(
+          build + "WebGL.data",
+          [
+            i => build + "WebGL.data.part" + (i + 1),
+            i => build + "WebGL.data." + String(i).padStart(3, "0"),
+            i => build + "WebGL.data.part" +
+              String(i + 1).padStart(3, "0")
+          ]
+        );
+
+        config.codeUrl = await joinParts(
+          build + "WebGL.wasm",
+          [
+            i => build + "WebGL.wasm." + String(i).padStart(3, "0"),
+            i => build + "WebGL.wasm.part" + (i + 1),
+            i => build + "WebGL.wasm.part" +
+              String(i + 1).padStart(3, "0")
+          ]
+        );
+
+        loading.textContent = "Starting How To Fish...";
+
+        const instance = await createUnityInstance(
+          canvas,
+          config,
+          progress => {
+            loading.textContent =
+              "Loading How To Fish... " +
+              Math.round(progress * 100) + "%";
+          }
+        );
+
         loading.remove();
-      })
-      .catch(error => {
-        loading.innerHTML =
-          '<div id="error">Could not load the game. Check the Build filenames and browser console.</div>';
+
+        document.addEventListener("keydown", event => {
+          if (event.key === "F11") {
+            instance.SetFullscreen(1);
+          }
+        });
+      } catch (error) {
         console.error(error);
-      });
-    };
+        loading.textContent =
+          "Game failed to load: " + error.message +
+          ". Open the browser console for details.";
+      }
+    }
 
-    loader.onerror = () => {
-      loading.textContent =
-        `Cannot find ${buildPath}/${buildName}.loader.js. Check your filenames.`;
-    };
-
-    document.body.appendChild(loader);
+    startGame();
   </script>
 </body>
 </html>
