@@ -1,92 +1,111 @@
-```html
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>How to Fish - File Diagnostic</title>
-<style>
-body {
-  margin: 0;
-  background: #111;
-  color: #eee;
-  font-family: Arial, sans-serif;
-  padding: 20px;
-}
-pre {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  background: #222;
-  padding: 15px;
-  border-radius: 8px;
-}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How To Fish</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #111;
+    }
+
+    #unity-container {
+      width: 100%;
+      height: 100%;
+    }
+
+    #unity-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      background: #111;
+    }
+
+    #loading {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font: 20px Arial, sans-serif;
+      background: #111;
+      z-index: 2;
+    }
+
+    #error {
+      color: #ffb3b3;
+      text-align: center;
+      padding: 20px;
+    }
+  </style>
 </head>
+
 <body>
-<h2>How to Fish — WASM Diagnostic</h2>
-<p>Checking the game files from your GitHub fork...</p>
-<pre id="log">Starting...</pre>
+  <div id="loading">Loading How To Fish...</div>
 
-<script>
-const base =
-  "https://cdn.jsdelivr.net/gh/JoeJoeBaar/HowToFishPort@main/Build/";
+  <div id="unity-container">
+    <canvas id="unity-canvas"></canvas>
+  </div>
 
-const log = document.getElementById("log");
+  <script>
+    const canvas = document.getElementById("unity-canvas");
+    const loading = document.getElementById("loading");
 
-function print(message) {
-  log.textContent += "\n" + message;
-}
+    // Change these names to match your Build folder.
+    const buildPath = "Build";
+    const buildName = "WebGL";
 
-async function checkFile(name) {
-  print("Downloading " + name + "...");
-  const response = await fetch(base + name + "?check=" + Date.now());
+    const config = {
+      dataUrl: `${buildPath}/${buildName}.data`,
+      frameworkUrl: `${buildPath}/${buildName}.framework.js`,
+      codeUrl: `${buildPath}/${buildName}.wasm`,
+      streamingAssetsUrl: "StreamingAssets",
+      companyName: "HowToFishPort",
+      productName: "How To Fish",
+      productVersion: "1.0"
+    };
 
-  if (!response.ok) {
-    throw new Error(name + " returned HTTP " + response.status);
-  }
+    const loader = document.createElement("script");
+    loader.src = `${buildPath}/${buildName}.loader.js`;
 
-  const buffer = await response.arrayBuffer();
-  print(name + ": " + buffer.byteLength.toLocaleString() + " bytes");
-  return new Uint8Array(buffer);
-}
+    loader.onload = () => {
+      if (typeof createUnityInstance !== "function") {
+        loading.textContent = "Unity loader was found, but did not initialize.";
+        return;
+      }
 
-async function run() {
-  log.textContent = "";
+      createUnityInstance(canvas, config, progress => {
+        loading.textContent =
+          `Loading How To Fish... ${Math.round(progress * 100)}%`;
+      })
+      .then(() => {
+        loading.remove();
+      })
+      .catch(error => {
+        loading.innerHTML =
+          '<div id="error">Could not load the game. Check the Build filenames and browser console.</div>';
+        console.error(error);
+      });
+    };
 
-  try {
-    const parts = [];
+    loader.onerror = () => {
+      loading.textContent =
+        `Cannot find ${buildPath}/${buildName}.loader.js. Check your filenames.`;
+    };
 
-    for (const suffix of ["000", "001", "002", "003"]) {
-      parts.push(await checkFile("WebGL.wasm." + suffix));
-    }
-
-    const total = parts.reduce((sum, part) => sum + part.length, 0);
-    print("\nWASM TOTAL: " + total.toLocaleString() + " bytes");
-
-    const combined = new Uint8Array(total);
-    let offset = 0;
-
-    for (const part of parts) {
-      combined.set(part, offset);
-      offset += part.length;
-    }
-
-    print("Combined bytes: " + offset.toLocaleString());
-    print(
-      "WASM magic header: " +
-      Array.from(combined.slice(0, 4))
-        .map(b => b.toString(16).padStart(2, "0"))
-        .join(" ")
-    );
-
-    print("\nDiagnostic finished. No game was started.");
-  } catch (error) {
-    print("\nERROR: " + error.message);
-  }
-}
-
-run();
-</script>
+    document.body.appendChild(loader);
+  </script>
 </body>
 </html>
-```
