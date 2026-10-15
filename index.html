@@ -10,8 +10,8 @@
       margin: 0;
       width: 100%;
       height: 100%;
+      background: #111;
       overflow: hidden;
-      background: #000;
     }
 
     #game {
@@ -26,17 +26,13 @@
       display: grid;
       place-items: center;
       color: white;
-      background: #000;
       font: 18px Arial, sans-serif;
-      text-align: center;
-      padding: 20px;
-      z-index: 2;
     }
   </style>
 </head>
 <body>
   <div id="loading">Loading How To Fish...</div>
-  <canvas id="game" tabindex="-1"></canvas>
+  <canvas id="game"></canvas>
 
   <script>
     const canvas = document.getElementById("game");
@@ -44,136 +40,50 @@
     const build = "Build/";
 
     const config = {
-      dataUrl: build + "WebGL.data",
+      dataUrl: [
+        build + "WebGL.data.part1",
+        build + "WebGL.data.part2",
+        build + "WebGL.data.part3",
+        build + "WebGL.data.part4",
+        build + "WebGL.data.part5",
+        build + "WebGL.data.part6",
+        build + "WebGL.data.part7"
+      ],
       frameworkUrl: build + "WebGL.framework.js",
-      codeUrl: build + "WebGL.wasm",
+      codeUrl: [
+        build + "WebGL.wasm.000",
+        build + "WebGL.wasm.001",
+        build + "WebGL.wasm.002",
+        build + "WebGL.wasm.003"
+      ],
       streamingAssetsUrl: "StreamingAssets",
-      companyName: "DefaultCompany",
+      companyName: "HowToFishPort",
       productName: "How To Fish",
       productVersion: "1.0"
     };
 
-    async function fileExists(url) {
-      try {
-        const response = await fetch(url, { method: "HEAD" });
-        if (response.ok) return true;
-        if (response.status === 404) return false;
-      } catch (_) {}
+    const script = document.createElement("script");
+    script.src = build + "WebGL.loader.js";
 
-      try {
-        const response = await fetch(url, {
-          headers: { Range: "bytes=0-0" }
-        });
-        return response.ok || response.status === 206;
-      } catch (_) {
-        return false;
-      }
-    }
-
-    async function joinParts(url, patterns) {
-      if (await fileExists(url)) return url;
-
-      for (const makePartName of patterns) {
-        const first = makePartName(0);
-
-        if (!(await fileExists(first))) continue;
-
-        const parts = [];
-
-        for (let i = 0; i < 128; i++) {
-          const partUrl = makePartName(i);
-
-          if (!(await fileExists(partUrl))) break;
-
-          loading.textContent =
-            "Loading game files... " + partUrl;
-
-          const response = await fetch(partUrl);
-
-          if (!response.ok) {
-            throw new Error("Failed to load " + partUrl);
-          }
-
-          parts.push(await response.blob());
-        }
-
-        if (parts.length) {
-          return URL.createObjectURL(
-            new Blob(parts, {
-              type: "application/octet-stream"
-            })
-          );
-        }
-      }
-
-      throw new Error("Missing game file or split parts: " + url);
-    }
-
-    async function startGame() {
-      try {
-        loading.textContent = "Loading Unity...";
-
-        const script = document.createElement("script");
-        script.src = build + "WebGL.loader.js";
-
-        await new Promise((resolve, reject) => {
-          script.onload = resolve;
-          script.onerror = () => reject(
-            new Error("Cannot load Build/WebGL.loader.js. Check that index.html is beside the Build folder.")
-          );
-          document.head.appendChild(script);
-        });
-
-        loading.textContent = "Preparing game files...";
-
-        config.dataUrl = await joinParts(
-          build + "WebGL.data",
-          [
-            i => build + "WebGL.data.part" + (i + 1),
-            i => build + "WebGL.data." + String(i).padStart(3, "0"),
-            i => build + "WebGL.data.part" +
-              String(i + 1).padStart(3, "0")
-          ]
-        );
-
-        config.codeUrl = await joinParts(
-          build + "WebGL.wasm",
-          [
-            i => build + "WebGL.wasm." + String(i).padStart(3, "0"),
-            i => build + "WebGL.wasm.part" + (i + 1),
-            i => build + "WebGL.wasm.part" +
-              String(i + 1).padStart(3, "0")
-          ]
-        );
-
-        loading.textContent = "Starting How To Fish...";
-
-        const instance = await createUnityInstance(
-          canvas,
-          config,
-          progress => {
-            loading.textContent =
-              "Loading How To Fish... " +
-              Math.round(progress * 100) + "%";
-          }
-        );
-
-        loading.remove();
-
-        document.addEventListener("keydown", event => {
-          if (event.key === "F11") {
-            instance.SetFullscreen(1);
-          }
-        });
-      } catch (error) {
-        console.error(error);
+    script.onload = () => {
+      createUnityInstance(canvas, config, progress => {
         loading.textContent =
-          "Game failed to load: " + error.message +
-          ". Open the browser console for details.";
-      }
-    }
+          "Loading How To Fish: " +
+          Math.round(progress * 100) + "%";
+      })
+      .then(() => loading.remove())
+      .catch(error => {
+        loading.textContent = "Game loading failed. Check the console.";
+        console.error(error);
+      });
+    };
 
-    startGame();
+    script.onerror = () => {
+      loading.textContent =
+        "Cannot find Build/WebGL.loader.js. Check your folders.";
+    };
+
+    document.body.appendChild(script);
   </script>
 </body>
 </html>
